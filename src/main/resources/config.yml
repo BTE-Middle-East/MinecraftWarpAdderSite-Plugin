@@ -1,0 +1,9 @@
+database:
+  url: "jdbc:mysql://localhost:3306/mydatabase"
+  username: "username"
+  password: "password"
+  poolSize: 10
+  tableName: "files_table"
+
+targetDirectory: "plugins/MyPlugin/files"
+
