@@ -1,5 +1,5 @@
 name: DatabaseConnector
-version: '1.0.1'
+version: '1.0.2'
 main: org.axolotlagatsuma.databaseconnector.DatabaseConnector
 api-version: '1.21'
 prefix: DBConnector
@@ -13,7 +13,7 @@ permissions:
     default: op
 commands:
   db:
-    description: Let's you reload the database connection.
+    description: Let's you reload the plugin configuration.
     aliases:
       - db
       - dbm

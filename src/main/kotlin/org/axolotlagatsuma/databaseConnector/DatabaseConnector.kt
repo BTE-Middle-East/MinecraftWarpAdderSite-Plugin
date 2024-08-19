@@ -1,24 +1,43 @@
 package org.axolotlagatsuma.databaseconnector
 
-import org.bukkit.scheduler.BukkitRunnable
-import org.bukkit.scheduler.BukkitTask
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import org.bukkit.Bukkit
+import org.bukkit.command.Command
+import org.bukkit.command.CommandExecutor
+import org.bukkit.command.CommandSender
 import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
-import java.io.FileOutputStream
-import java.sql.Connection
-import java.sql.PreparedStatement
-import java.sql.ResultSet
 import java.sql.SQLException
 
-class DatabaseConnector : JavaPlugin() {
+class DatabaseConnector : JavaPlugin(), CommandExecutor {
 
     private lateinit var databaseManager: DatabaseManager
 
     override fun onEnable() {
-        // Initialize the database manager with configuration
+        // Load initial configuration
+        saveDefaultConfig()
+        loadConfiguration()
+
+        // Register the db command
+        this.getCommand("db")?.setExecutor(this)
+
+        // Schedule the task to run every minute (1200 ticks)
+        val scheduler = server.scheduler
+        scheduler.runTaskTimer(this, Runnable {
+            databaseManager.copyFilesToDirectory()
+        }, 0L, 1200L)
+
+        logger.info("Plugin Enabled")
+    }
+
+    override fun onDisable() {
+        databaseManager.close()
+        logger.info("Plugin Disabled")
+    }
+
+    private fun loadConfiguration() {
+        reloadConfig()
         databaseManager = DatabaseManager(
             config.getString("database.url")!!,
             config.getString("database.username")!!,
@@ -27,22 +46,24 @@ class DatabaseConnector : JavaPlugin() {
             config.getString("database.tableName")!!,
             config.getString("targetDirectory")!!
         )
-
-        // Schedule the task to run every minute (1200 ticks)
-        val scheduler = server.scheduler
-        val task: BukkitTask = object : BukkitRunnable() {
-            override fun run() {
-                databaseManager.copyFilesToDirectory()
-            }
-        }.runTaskTimer(this, 0L, 1200L)
-
-        logger.info("Plugin Enabled")
     }
 
-
-    override fun onDisable() {
-        databaseManager.close()
-        logger.info("Plugin Disabled")
+    override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<String>): Boolean {
+        if (command.name.equals("db", ignoreCase = true)) {
+            if (args.isNotEmpty() && args[0].equals("reload", ignoreCase = true)) {
+                if (sender.hasPermission("databasemanager.reload")) {
+                    loadConfiguration()
+                    sender.sendMessage("§aConfiguration reloaded successfully.")
+                } else {
+                    sender.sendMessage("§cYou do not have permission to execute this command.")
+                }
+                return true
+            } else {
+                sender.sendMessage("§cUsage: /$label reload")
+                return false
+            }
+        }
+        return false
     }
 
     class DatabaseManager(
@@ -107,18 +128,16 @@ class DatabaseConnector : JavaPlugin() {
                                 val targetFile = File(directory, "$fileName.yml")
 
                                 try {
-                                    FileOutputStream(targetFile).use { outputStream ->
-                                        outputStream.write(content.toByteArray())
-                                    }
+                                    targetFile.writeText(content)
                                 } catch (e: Exception) {
-                                    Bukkit.getLogger().severe("Failed to write file: $fileName. Error: ${e.message}")
+                                    Bukkit.getServer().logger.severe("Failed to write file: $fileName. Error: ${e.message}")
                                 }
                             }
                         }
                     }
                 }
             } catch (e: SQLException) {
-                Bukkit.getLogger().severe("Failed to retrieve files from database: ${e.message}")
+                Bukkit.getServer().logger.severe("Failed to retrieve files from database: ${e.message}")
             }
         }
 
