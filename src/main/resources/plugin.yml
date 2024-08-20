@@ -1,7 +1,7 @@
 name: DatabaseConnector
 version: '1.0.2'
 main: org.axolotlagatsuma.databaseconnector.DatabaseConnector
-api-version: '1.20.2'
+api-version: '1.21'
 prefix: DBConnector
 load: STARTUP
 authors: [ AxolotlAgatsuma ]
