@@ -2,6 +2,7 @@ package org.axolotlagatsuma.databaseconnector
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import org.axolotlagatsuma.databaseConnector.hooks.DiscordSRVHook
 import org.bukkit.Bukkit
 import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
@@ -19,6 +20,10 @@ class DatabaseConnector : JavaPlugin(), CommandExecutor {
         saveDefaultConfig()
         loadConfiguration()
 
+        // Check if DiscordSRV is present
+        if (server.pluginManager.getPlugin("DiscordSRV") != null)
+            DiscordSRVHook.register();
+
         // Register the db command
         this.getCommand("db")?.setExecutor(this)
 
@@ -32,7 +37,11 @@ class DatabaseConnector : JavaPlugin(), CommandExecutor {
     }
 
     override fun onDisable() {
+        // Closes the database connection
         databaseManager.close()
+        // Unregisters the DiscordSRV hook
+        if (server.pluginManager.getPlugin("DiscordSRV") != null)
+            DiscordSRVHook.unregister();
         logger.info("Plugin Disabled")
     }
 
