@@ -2,7 +2,6 @@ package org.axolotlagatsuma.databaseconnector
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
-import org.axolotlagatsuma.databaseConnector.hooks.DiscordSRVHook
 import org.bukkit.Bukkit
 import org.bukkit.command.Command
 import org.bukkit.command.CommandExecutor
@@ -10,38 +9,24 @@ import org.bukkit.command.CommandSender
 import org.bukkit.plugin.java.JavaPlugin
 import java.io.File
 import java.sql.SQLException
+import github.scarsz.discordsrv.DiscordSRV
+import github.scarsz.discordsrv.dependencies.jda.api.EmbedBuilder
+import java.awt.Color
 
 class DatabaseConnector : JavaPlugin(), CommandExecutor {
 
     private lateinit var databaseManager: DatabaseManager
 
     override fun onEnable() {
-        // Load initial configuration
         saveDefaultConfig()
         loadConfiguration()
-
-        // Check if DiscordSRV is present
-        if (server.pluginManager.getPlugin("DiscordSRV") != null)
-            DiscordSRVHook.register();
-
-        // Register the db command
-        this.getCommand("db")?.setExecutor(this)
-
-        // Schedule the task to run every minute (1200 ticks)
-        val scheduler = server.scheduler
-        scheduler.runTaskTimer(this, Runnable {
-            databaseManager.copyFilesToDirectory()
-        }, 0L, 1200L)
-
+        getCommand("db")?.setExecutor(this)
+        server.scheduler.runTaskTimer(this, Runnable { databaseManager.copyFilesToDirectory() }, 0L, 1200L)
         logger.info("Plugin Enabled")
     }
 
     override fun onDisable() {
-        // Closes the database connection
         databaseManager.close()
-        // Unregisters the DiscordSRV hook
-        if (server.pluginManager.getPlugin("DiscordSRV") != null)
-            DiscordSRVHook.unregister();
         logger.info("Plugin Disabled")
     }
 
@@ -53,57 +38,71 @@ class DatabaseConnector : JavaPlugin(), CommandExecutor {
             config.getString("database.password")!!,
             config.getInt("database.poolSize"),
             config.getString("database.tableName")!!,
-            config.getString("targetDirectory")!!
+            config.getString("targetDirectory")!!,
+            config.getString("discord.channelId")!!
         )
     }
 
     override fun onCommand(sender: CommandSender, command: Command, label: String, args: Array<String>): Boolean {
         if (command.name.equals("db", ignoreCase = true)) {
             if (args.isNotEmpty() && args[0].equals("reload", ignoreCase = true)) {
-                if (sender.hasPermission("databasemanager.reload")) {
+                if (sender.hasPermission("databaseconnector.reload") || sender.hasPermission("databaseconnector.admin")) {
                     loadConfiguration()
                     sender.sendMessage("§aConfiguration reloaded successfully.")
                 } else {
                     sender.sendMessage("§cYou do not have permission to execute this command.")
                 }
                 return true
-            } else {
-                sender.sendMessage("§cUsage: /$label reload")
-                return false
+            } else if (args.isNotEmpty() && args[0].equals("checknow", ignoreCase = true)) {
+                if (sender.hasPermission("databaseconnector.checknow") || sender.hasPermission("databaseconnector.admin")) {
+                    databaseManager.copyFilesToDirectory()
+                    sender.sendMessage("§aFiles copied successfully.")
+                } else {
+                    sender.sendMessage("§cYou do not have permission to execute this command.")
+                }
+                return true
             }
         }
+        sender.sendMessage("§cUsage: /$label <reload|checknow>")
         return false
     }
 
     class DatabaseManager(
-        private val url: String,
-        private val username: String,
-        private val password: String,
-        private val poolSize: Int,
+        url: String,
+        username: String,
+        password: String,
+        poolSize: Int,
         private val tableName: String,
-        private val targetDirectory: String
+        private val targetDirectory: String,
+        private val discordChannelId: String
     ) {
 
-        private val dataSource: HikariDataSource
+        private val dataSource: HikariDataSource = HikariDataSource(HikariConfig().apply {
+            jdbcUrl = url
+            this.username = username
+            this.password = password
+            maximumPoolSize = poolSize
+        })
+
+        private val processedFiles = mutableSetOf<String>()
 
         init {
-            val config = HikariConfig().apply {
-                jdbcUrl = url
-                this.username = this@DatabaseManager.username
-                this.password = this@DatabaseManager.password
-                maximumPoolSize = poolSize
+            // Initialize processedFiles with existing files in the target directory
+            val directory = File(targetDirectory)
+            if (directory.exists() && directory.isDirectory) {
+                directory.listFiles()?.forEach { file ->
+                    if (file.isFile && file.extension == "yml") {
+                        processedFiles.add(file.nameWithoutExtension)
+                    }
+                }
             }
-
-            dataSource = HikariDataSource(config)
         }
 
         fun copyFilesToDirectory() {
-            val directory = File(targetDirectory)
-            if (!directory.exists()) {
-                directory.mkdirs() // Create the directory if it doesn't exist
-            }
-
+            val directory = File(targetDirectory).apply { if (!exists()) mkdirs() }
             val sql = "SELECT name, x, y, z, file_content FROM $tableName"
+
+            Bukkit.getServer().logger.info("Checking the database for new files...")
 
             try {
                 dataSource.connection.use { connection ->
@@ -111,36 +110,22 @@ class DatabaseConnector : JavaPlugin(), CommandExecutor {
                         statement.executeQuery().use { resultSet ->
                             while (resultSet.next()) {
                                 val fileName = resultSet.getString("name")
-                                val x = resultSet.getFloat("x").toInt()
-                                val y = resultSet.getFloat("y").toInt()
-                                val z = resultSet.getFloat("z").toInt()
-                                val fileContent = resultSet.getString("file_content")
-
-                                val worldId = "1c617a1b-94f2-4311-9ae2-c4102bf1e96f" // Example UUID
-                                val worldName = "world"
-                                val yaw = 0
-                                val pitch = 0
-                                val lastOwnerId = "ea0064bf-04dc-419e-8a0d-311c9a2b7a87" // Example UUID
+                                if (processedFiles.contains(fileName)) continue
 
                                 val content = """
-                                    world: $worldId
-                                    world-name: $worldName
-                                    x: $x
-                                    y: $y
-                                    z: $z
-                                    yaw: $yaw
-                                    pitch: $pitch
-                                    name: $fileName
-                                    lastowner: $lastOwnerId
-                                """.trimIndent()
-
-                                val targetFile = File(directory, "$fileName.yml")
-
-                                try {
-                                    targetFile.writeText(content)
-                                } catch (e: Exception) {
-                                    Bukkit.getServer().logger.severe("Failed to write file: $fileName. Error: ${e.message}")
-                                }
+                                world: 1c617a1b-94f2-4311-9ae2-c4102bf1e96f
+                                world-name: world
+                                x: ${resultSet.getFloat("x").toInt()}
+                                y: ${resultSet.getFloat("y").toInt()}
+                                z: ${resultSet.getFloat("z").toInt()}
+                                yaw: 0
+                                pitch: 0
+                                name: $fileName
+                                lastowner: ea0064bf-04dc-419e-8a0d-311c9a2b7a87
+                            """.trimIndent()
+                                File(directory, "$fileName.yml").writeText(content)
+                                sendDiscordEmbed(fileName, resultSet.getFloat("x").toInt(), resultSet.getFloat("y").toInt(), resultSet.getFloat("z").toInt())
+                                processedFiles.add(fileName)
                             }
                         }
                     }
@@ -148,6 +133,29 @@ class DatabaseConnector : JavaPlugin(), CommandExecutor {
             } catch (e: SQLException) {
                 Bukkit.getServer().logger.severe("Failed to retrieve files from database: ${e.message}")
             }
+        }
+
+        private fun sendDiscordEmbed(fileName: String, x: Int, y: Int, z: Int) {
+            if (discordChannelId.isEmpty()) {
+                Bukkit.getServer().logger.warning("Discord channel ID is not configured.")
+                return
+            }
+
+            val mainGuild = DiscordSRV.getPlugin().mainGuild
+            if (mainGuild == null) {
+                Bukkit.getServer().logger.warning("Main guild is not available.")
+                return
+            }
+
+            val embed = EmbedBuilder()
+                .setTitle("File Created")
+                .setDescription("A new file named **$fileName.yml** has been created.")
+                .addField("Coordinates", "X: $x, Y: $y, Z: $z", false)
+                .setColor(Color.GREEN)
+                .build()
+
+            mainGuild.jda.getTextChannelById(discordChannelId)?.sendMessageEmbeds(embed)?.queue()
+                ?: Bukkit.getServer().logger.warning("Discord channel with ID $discordChannelId not found.")
         }
 
         fun close() {

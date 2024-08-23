@@ -6,7 +6,7 @@
 
     <groupId>org.axolotlagatsuma</groupId>
     <artifactId>databaseconnector-kotlin</artifactId>
-    <version>1.0.2</version>
+    <version>1.0.3</version>
     <packaging>jar</packaging>
 
     <name>databaseconnector-kotlin</name>
@@ -73,10 +73,10 @@
             <id>Scarsz-Nexus</id>
             <url>https://nexus.scarsz.me/content/groups/public/</url>
         </repository>
-        <repository>
+       <!-- <repository>
             <id>placeholderapi</id>
             <url>https://repo.extendedclip.com/content/repositories/placeholderapi/</url>
-        </repository>
+        </repository> -->
     </repositories>
 
     <dependencies>
@@ -103,11 +103,11 @@
             <version>1.28.0</version>
             <scope>provided</scope>
         </dependency>
-        <dependency>
+       <!-- <dependency>
             <groupId>me.clip</groupId>
             <artifactId>placeholderapi</artifactId>
             <version>2.11.6</version>
             <scope>provided</scope>
-        </dependency>
+        </dependency> -->
     </dependencies>
 </project>
