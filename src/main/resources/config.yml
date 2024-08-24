@@ -9,4 +9,3 @@ targetDirectory: "plugins/MyPlugin/files"
 
 discord:
   channelId: "YOUR_CHANNEL_ID" # Replace with the default channel ID or leave blank
-
